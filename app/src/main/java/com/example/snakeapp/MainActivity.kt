@@ -6,8 +6,18 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -21,175 +31,98 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val game = Game(lifecycleScope)
         setContent {
-            Surface(color = MaterialTheme.colorScheme.background) {
-                Game()
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Snake(game)
             }
         }
     }
 }
 
 @Composable
-fun Game() {
-    var direction by remember { mutableStateOf(Direction.Right) }
-    var gameOver by remember { mutableStateOf(false) }
-    var score by remember { mutableStateOf(0) }
-
-    val coroutineScope = rememberCoroutineScope()
-
-    val screenWidth = 20
-    val screenHeight = 30
-
-    var snake by remember { mutableStateOf(listOf(Position(10, 10))) }
-    var food by remember { mutableStateOf(Position(15, 10)) }
-
-    LaunchedEffect(Unit) {
-        while (!gameOver) {
-            delay(200)
-            coroutineScope.launch {
-                snake = moveSnake(snake, direction, screenWidth, screenHeight)
-
-                if (snake.head() == food) {
-                    snake = snake.grow(direction)
-                    score++
-                    food = generateFood(snake, screenWidth, screenHeight)
-                }
-
-                if (snake.hasCollision(screenWidth, screenHeight)) {
-                    gameOver = true
-                }
-            }
+fun Snake(game: Game) {
+    val state = game.state.collectAsState(initial = null)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        state.value?.let {
+            Board(it)
         }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .aspectRatio(screenWidth.toFloat() / screenHeight)
-    ) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.DarkGray)
-        ) {
-            drawSnake(snake)
-            drawFood(food)
-        }
-
-        if (gameOver) {
-            GameOverOverlay(score)
+        Buttons() {
+            game.move = it
         }
     }
 }
 
 @Composable
-fun GameOverOverlay(score: Int) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.8f))
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("Game Over", style = MaterialTheme.typography.bodyMedium, color = Color.White)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Score: $score", style = MaterialTheme.typography.bodySmall, color = Color.White)
+fun Buttons(onDirectionChange: (Pair<Int, Int>) -> Unit) {
+    val buttonSize = Modifier.size(64.dp)
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+        Button(onClick = {
+            onDirectionChange(Pair(0, -1))
+        }, modifier = buttonSize) {
+            Icon(Icons.Default.KeyboardArrowUp, null)
+        }
+        Row() {
+            Button(onClick = {
+                onDirectionChange(Pair(-1, 0))
+            }, modifier = buttonSize) {
+                Icon(Icons.Default.KeyboardArrowLeft, null)
+            }
+            Spacer(modifier = buttonSize)
+            Button(onClick = {
+                onDirectionChange(Pair(1, 0))
+            }, modifier = buttonSize) {
+                Icon(Icons.Default.KeyboardArrowRight, null)
+            }
+        }
+        Button(onClick = {
+            onDirectionChange(Pair(0, 1))
+        }, modifier = buttonSize) {
+            Icon(Icons.Default.KeyboardArrowDown, null)
         }
     }
 }
 
-enum class Direction {
-    Up, Down, Left, Right
-}
-
-data class Position(val x: Int, val y: Int)
-
-fun List<Position>.head() = first()
-
-fun List<Position>.grow(direction: Direction): List<Position> {
-    val newHead = when (direction) {
-        Direction.Up -> Position(head().x, head().y - 1)
-        Direction.Down -> Position(head().x, head().y + 1)
-        Direction.Left -> Position(head().x - 1, head().y)
-        Direction.Right -> Position(head().x + 1, head().y)
-    }
-
-    return listOf(newHead) + this
-}
-
-fun List<Position>.move(direction: Direction): List<Position> {
-    val newHead = when (direction) {
-        Direction.Up -> Position(head().x, head().y - 1)
-        Direction.Down -> Position(head().x, head().y + 1)
-        Direction.Left -> Position(head().x - 1, head().y)
-        Direction.Right -> Position(head().x + 1, head().y)
-    }
-
-    return listOf(newHead) + dropLast(1)
-}
-
-fun List<Position>.hasCollision(screenWidth: Int, screenHeight: Int): Boolean {
-    val head = head()
-    return head.x !in 0 until screenWidth ||
-            head.y !in 0 until screenHeight ||
-            drop(1).contains(head)
-}
-
-fun moveSnake(snake: List<Position>, direction: Direction, screenWidth: Int, screenHeight: Int): List<Position> {
-    return snake.move(direction).let { newSnake ->
-        if (newSnake.hasCollision(screenWidth, screenHeight)) {
-            snake
-        } else {
-            newSnake
-        }
-    }
-}
-
-fun generateFood(snake: List<Position>, screenWidth: Int, screenHeight: Int): Position {
-    val availablePositions = (0 until screenWidth).flatMap { x ->
-        (0 until screenHeight).map { y ->
-            Position(x, y)
-        }
-    }
-
-    return availablePositions.filterNot { snake.contains(it) }.random()
-}
-
-fun DrawScope.drawSnake(snake: List<Position>) {
-    snake.forEachIndexed { _, position ->
-        drawRect(
-            color = Color.White,
-            topLeft = Offset(position.x * 20f, position.y * 20f),
-            size = Size(20f, 20f),
-            style = Stroke(width = 1.dp.toPx())
+@Composable
+fun Board(state: State) {
+    BoxWithConstraints(Modifier.padding(16.dp)) {
+        val tileSize = maxWidth / Game.BOARD_SIZE
+        Box(
+            Modifier
+                .size(maxWidth)
+                .border(2.dp, Color.Green)
         )
-    }
-}
+        Box(
+            Modifier
+                .offset(x = tileSize * state.food.first, y = tileSize * state.food.second)
+                .size(tileSize)
+                .background(color = Color.Red, CircleShape)
+        )
 
-fun DrawScope.drawFood(position: Position) {
-    drawCircle(
-        color = Color.Red,
-        center = Offset(position.x * 20f + 10f, position.y * 20f + 10f),
-        radius = 10f
-    )
-}
-
-
-
-@Preview(showBackground = true)
-@Composable
-fun DefaultPreview() {
-    Surface {
-        Game()
+        state.snake.forEach {
+            Box(
+                modifier = Modifier
+                    .offset(x = tileSize * it.first, y = tileSize * it.second)
+                    .size(tileSize)
+                    .background(color = Color.Green)
+            )
+        }
     }
 }
