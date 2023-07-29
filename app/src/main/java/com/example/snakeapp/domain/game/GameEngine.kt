@@ -1,9 +1,12 @@
 package com.example.snakeapp.domain.game
 
+import android.content.Context
+import android.media.MediaPlayer
+import androidx.annotation.RawRes
 import androidx.compose.runtime.mutableStateOf
+import com.example.snakeapp.R
 import com.example.snakeapp.data.model.State
 
-import com.mukeshsolanki.snake.domain.game.SnakeDirection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -17,8 +20,13 @@ import java.util.*
 class GameEngine(
     private val scope: CoroutineScope,
     private val onGameEnded: () -> Unit,
-    private val onFoodEaten: () -> Unit
+    private val onFoodEaten: () -> Unit,
+    private val context: Context
 ) {
+    var mMediaPlayer: MediaPlayer? = null
+    var mpEaten: MediaPlayer? = null
+
+
     private val mutex = Mutex()
     private val mutableState =
         MutableStateFlow(
@@ -40,6 +48,43 @@ class GameEngine(
             }
         }
 
+    fun playSound(context: Context, sound: Int) {
+        if (mMediaPlayer == null) {
+            mMediaPlayer = MediaPlayer.create(context, sound)
+            mMediaPlayer!!.isLooping = true
+            mMediaPlayer!!.start()
+        } else mMediaPlayer!!.start()
+    }
+    fun pauseSound() {
+        if (mMediaPlayer?.isPlaying == true) mMediaPlayer?.pause()
+    }
+    private fun stopSound() {
+        if (mMediaPlayer != null) {
+            mMediaPlayer!!.stop()
+            mMediaPlayer!!.release()
+            mMediaPlayer = null
+        }
+    }
+
+    fun playSoundEaten(context: Context) {
+        if (mpEaten == null) {
+            mpEaten = MediaPlayer.create(context, SOUND_EATEN)
+            mpEaten!!.isLooping = false
+            mpEaten!!.start()
+        } else mpEaten!!.start()
+    }
+
+
+    private fun stopSoundEaten() {
+        if (mpEaten != null) {
+            mpEaten!!.stop()
+            mpEaten!!.release()
+            mpEaten = null
+        }
+    }
+
+
+
     fun reset() {
         mutableState.update {
             it.copy(
@@ -56,6 +101,7 @@ class GameEngine(
         scope.launch {
             var snakeLength = 2
             while (true) {
+                playSound(context, SOUND_GAMING)
                 delay(150)
                 mutableState.update {
                     val hasReachedLeftEnd =
@@ -69,6 +115,7 @@ class GameEngine(
                     if (hasReachedLeftEnd || hasReachedTopEnd || hasReachedRightEnd || hasReachedBottomEnd) {
                         snakeLength = 2
                         onGameEnded.invoke()
+                        stopSound()
                     }
                     if (move.first == 0 && move.second == -1) {
                         currentDirection.value = SnakeDirection.Up
@@ -89,12 +136,17 @@ class GameEngine(
                     }
                     if (newPosition == it.food) {
                         onFoodEaten.invoke()
+                        pauseSound()
+                        playSoundEaten(context)
                         snakeLength++
                     }
 
                     if (it.snake.contains(newPosition)) {
                         snakeLength = 2
                         onGameEnded.invoke()
+                        stopSound()
+                        stopSoundEaten()
+                        playSoundEaten(context)
                     }
 
                     it.copy(
@@ -112,5 +164,8 @@ class GameEngine(
 
     companion object {
         const val BOARD_SIZE = 32
+        val SOUND_GAMING = R.raw.gaming
+        val SOUND_EATEN = R.raw.eaten
+        val SOUND_GAMEOVER = R.raw.gameover
     }
 }

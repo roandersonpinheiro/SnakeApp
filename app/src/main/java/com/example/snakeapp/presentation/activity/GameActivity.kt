@@ -1,10 +1,14 @@
 package com.example.snakeapp.presentation.activity
 
+import android.content.Context
+import android.media.MediaPlayer
+import android.os.Bundle
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.lifecycleScope
 import com.example.snakeapp.R
@@ -25,19 +29,34 @@ class GameActivity : BaseActivity() {
     private lateinit var scope: CoroutineScope
     private lateinit var playerName: String
     private lateinit var highScores: List<HighScore>
-    private var gameEngine = GameEngine(
-        scope = lifecycleScope,
-        onGameEnded = {
-            if (isPlaying.value) {
-                isPlaying.value = false
-                scope.launch { dataStore.saveHighScore(highScores) }
-            }
-        },
-        onFoodEaten = { score.value++ }
-    )
+    private lateinit var gameEngine: GameEngine
+    var mpGameOver: MediaPlayer? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        gameEngine = GameEngine(
+            context = this,
+            scope = lifecycleScope,
+            onGameEnded = {
+                if (isPlaying.value) {
+                    isPlaying.value = false
+                    scope.launch { dataStore.saveHighScore(highScores) }
+                }
+            },
+            onFoodEaten = { score.value++ }
+        )
+    }
+    fun playSoundGameOver(context: Context) {
+        if (mpGameOver == null) {
+            mpGameOver = MediaPlayer.create(context, GameEngine.SOUND_GAMEOVER)
+            mpGameOver!!.isLooping = false
+            mpGameOver!!.start()
+        } else mpGameOver!!.start()
+    }
 
     @Composable
     override fun Content() {
+
         scope = rememberCoroutineScope()
         dataStore = GameCache(applicationContext)
         playerName =
@@ -49,6 +68,7 @@ class GameActivity : BaseActivity() {
             if (isPlaying.value) {
                 GameScreen(gameEngine, score.value)
             } else {
+                playSoundGameOver(LocalContext.current)
                 EndScreen(score.value) {
                     score.value = 0
                     gameEngine.reset()
